@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Founder</title>
+<style>
+:root{--blue:#69ACF5;--pale:#E6F2FF;--navy:#101A2A;--bg:#F7FAFE;--card:#fff;--text:#101A2A;--muted:#64748B;--line:#D8E2EE;--bad:#DC2626;--ok:#16803D;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0B1320;--card:#101A2A;--text:#EAF2FC;--muted:#9AA9BC;--line:#26364B;--pale:#1A2A40}}
+:root[data-theme="dark"]{--bg:#0B1320;--card:#101A2A;--text:#EAF2FC;--muted:#9AA9BC;--line:#26364B;--pale:#1A2A40}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:#101A2A;color:#fff;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 18px}
+header b{font:600 19px Georgia,serif;margin-right:auto;display:flex;gap:9px;align-items:center}
+header svg{background:var(--blue);border-radius:8px;padding:5px;width:30px;height:30px}
+nav button{background:none;border:0;color:#B8C4D3;padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit}
+nav button.on,nav button:hover{background:#1A2A40;color:#fff}
+main{max-width:1040px;margin:0 auto;padding:22px 18px 60px}
+h1{font:600 28px Georgia,serif;margin:.2em 0}h2{font:600 20px Georgia,serif;margin:.2em 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:12px 0}
+.muted{color:var(--muted)}.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+.bar{height:8px;background:var(--pale);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--blue)}
+button.b,a.b{background:var(--blue);color:#101A2A;border:0;border-radius:9px;padding:8px 14px;font:600 14px inherit;cursor:pointer}
+button.o{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:7px 12px;cursor:pointer;font:inherit}
+button.o:hover{background:var(--pale)}button.d{color:var(--bad)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.item{cursor:pointer}.item:hover{border-color:var(--blue)}
+.pill{font-size:12px;padding:2px 9px;border-radius:99px;background:var(--pale);color:var(--text)}
+input,textarea,select{width:100%;font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--blue);border-color:var(--blue)}
+label{display:block;font-weight:600;font-size:13px;margin:10px 0 4px}
+.adm{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px}@media(max-width:800px){.adm{grid-template-columns:1fr}}
+.sl{padding:9px 10px;border-radius:9px;cursor:pointer;border:1px solid transparent}.sl:hover{background:var(--pale)}.sl.on{background:var(--pale);border-color:var(--blue)}
+.warn{border:1px solid #B45309;background:#FFF7E6;color:#5a2a05;border-radius:10px;padding:10px 12px;font-size:14px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#101A2A;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:9}
+ul.ck{list-style:none;padding:0}ul.ck li{padding:4px 0}
+.two{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px}@media(max-width:800px){.two{grid-template-columns:1fr}}
+</style></head><body>
+<header><b><svg viewBox="0 0 24 24" fill="none" stroke="#101A2A" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5z"/></svg>The Founder</b><nav id="nav"></nav></header>
+<main id="app"><p class="muted">Loading…</p></main><div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let db=null,uid=null,isAdmin=false,stages=[],done={},view={n:"home"},adm={sid:null,tid:null,q:"",f:"all"},draft=null,loaded=false;
+const live=()=>stages.filter(s=>s.status==="published").sort((a,b)=>a.number-b.number).map(s=>({...s,tasks:(s.tasks||[]).filter(t=>t.status==="published")}));
+const all=()=>[...stages].sort((a,b)=>a.number-b.number);
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",2600)}
+function prog(){const ts=live().flatMap(s=>s.tasks);const n=ts.filter(t=>done[t.id]).length;return{n,total:ts.length,pct:ts.length?Math.round(n*100/ts.length):0}}
+async function saveDone(){try{await db.collection("data/users/"+uid).doc("progress").set({done})}catch(e){toast("Could not save progress")}}
+async function saveStage(s,msg){try{await db.doc("stages/"+s.id).set(s);toast(msg||"Saved")}catch(e){toast("Not allowed or failed: "+(e.message||e.code))}}
+function nav(){const items=[["home","Home"],["journey","Journey"],["coach","Coach"],["inspiration","Inspiration"],["tools","Tools"],["profile","Profile"]];if(isAdmin)items.push(["admin","Admin"]);
+$("#nav").innerHTML=items.map(([k,l])=>`<button class="${view.n===k||(k==="journey"&&view.n==="stage")?"on":""}" data-go="${k}">${l}</button>`).join("")}
+function home(){const p=prog(),L=live();const next=L.flatMap(s=>s.tasks.map(t=>({s,t}))).find(x=>!done[x.t.id]);
+return `<p class="eyebrow">Your path</p><h1>${prof?.name?`Welcome back, ${esc(prof.name)}`:"Build your business, one step at a time"}</h1>${prof?.company?`<p class="muted">${esc(prof.company)}${prof.stage?" · "+esc(prof.stage):""}${prof.hours?" · "+esc(prof.hours):""}</p>`:""}
+<div class="card"><div class="row" style="justify-content:space-between"><b>${p.pct}% of the journey</b><span class="muted">${p.n} of ${p.total} tasks</span></div><div class="bar" style="margin-top:8px"><i style="width:${p.pct}%"></i></div></div>
+${next?`<div class="card"><p class="eyebrow">Recommended next step</p><h2>${esc(next.t.title)}</h2><p class="muted">${esc(next.t.outcome)}</p><button class="b" data-task="${next.s.id}|${next.t.id}">Open task</button></div>`:L.length?`<div class="card"><h2>Every task is complete</h2></div>`:""}
+${!L.length?`<div class="card muted">${loaded?"No published content yet.":"Loading…"}</div>`:""}`}
+function journey(){const L=live();return `<p class="eyebrow">My journey</p><h1>${L.length} stages</h1><div class="grid">${L.map(s=>{const d=s.tasks.filter(t=>done[t.id]).length;return `<div class="card item" data-stage="${s.id}"><p class="eyebrow">Stage ${s.number}</p><h2>${esc(s.title)}</h2><p class="muted">${esc(s.summary)}</p><div class="bar"><i style="width:${s.tasks.length?d*100/s.tasks.length:0}%"></i></div><p class="muted" style="margin:6px 0 0">${d}/${s.tasks.length} tasks</p></div>`}).join("")}</div>`}
+function stageV(){const s=live().find(x=>x.id===view.sid);if(!s)return journey();
+let h=`<button class="o" data-go="journey">← All stages</button><p class="eyebrow" style="margin-top:14px">Stage ${s.number}</p><h1>${esc(s.title)}</h1><p class="muted">${esc(s.summary)}</p>`;
+if(view.tid){const t=s.tasks.find(x=>x.id===view.tid);if(t){const ck=done["ck:"+t.id]||{},Q=t.quotes||[],M=t.moves||[],S=t.sources||[];
+h+=`<div class="card"><h2>${esc(t.title)}</h2><p><b>Outcome.</b> ${esc(t.outcome)}</p><p><b>Why it matters.</b> ${esc(t.why)}</p><b>Steps</b><ol>${(t.steps||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ol><p class="muted"><b>Example.</b> ${esc(t.example)}</p><b>Checklist</b><ul class="ck">${(t.checklist||[]).map((x,i)=>`<li><label style="font-weight:400;margin:0"><input type="checkbox" style="width:auto" data-ck="${t.id}|${i}" ${ck[i]?"checked":""}> ${esc(x)}</label></li>`).join("")}</ul>
+<label>Your answer & notes</label><textarea rows="6" data-ans="${t.id}" placeholder="Type your work for this task here… it saves automatically.">${esc(ans[t.id]||"")}</textarea><p class="muted" style="font-size:12px">Saved to your account.</p>
+<button class="b" data-done="${t.id}">${done[t.id]?"Completed ✓ (undo)":"Mark complete"}</button>
+${Q.length||M.length?`<div style="margin-top:22px"><p class="eyebrow">Learn from the best</p>${Q.map(q=>`<div style="border-left:4px solid var(--blue);padding:2px 0 2px 12px;margin:12px 0"><p style="font:italic 17px/1.4 Georgia,serif;margin:0 0 4px">“${esc(q.text)}”</p><p style="margin:0"><b>${esc(q.by)}</b>${q.role?` <span class="muted">· ${esc(q.role)}</span>`:""}</p>${q.lesson?`<p class="muted" style="margin:4px 0 0">${esc(q.lesson)}</p>`:""}</div>`).join("")}${M.length?`<p style="margin:16px 0 4px"><b>How the best did it</b></p><ul style="margin:0;padding-left:18px">${M.map(m=>`<li style="margin:6px 0"><b>${esc(m.by)}:</b> ${esc(m.text)}</li>`).join("")}</ul>`:""}</div>`:""}
+${S.length?`<p class="muted" style="font-size:12px;margin:20px 0 0;border-top:1px solid var(--line);padding-top:8px">About the sources: ${S.map(x=>esc(x.title)+(x.detail?" — "+esc(x.detail):"")).join("; ")}. Quotes are widely attributed; check the original before quoting publicly.</p>`:""}</div>`;return h}}
+return h+s.tasks.map(t=>`<div class="card item" data-task="${s.id}|${t.id}"><div class="row" style="justify-content:space-between"><b>${esc(t.title)}</b><span class="pill">${done[t.id]?"Completed":"To do"}</span></div><span class="muted">${esc(t.outcome)}</span></div>`).join("")}
+let idr=null,tdr=null;
+const ptab=()=>`<div class="row" style="margin:10px 0">${[["journey","Journey"],["insp","Inspiration"],["tpl","Templates"]].map(([k,l])=>`<button class="${(adm.tab||"journey")===k?"b":"o"}" data-tab="${k}">${l}</button>`).join("")}</div>`;
+const rows=(arr,key,fields)=>(arr||[]).map((x,i)=>`<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0">${fields.map(([k,l,ta])=>`<label style="margin-top:6px">${l}</label>${ta?`<textarea rows="2" data-arr="${key}" data-i="${i}" data-k="${k}">${esc(x[k])}</textarea>`:`<input data-arr="${key}" data-i="${i}" data-k="${k}" value="${esc(x[k])}">`}`).join("")}<button class="o d" style="margin-top:8px" data-rm="${key}|${i}">Remove</button></div>`).join("");
+function taskEditor(t){return `<div class="card"><h2>Edit task</h2><label>Title</label><input data-t-f="title" value="${esc(t.title)}"><label>Outcome (completion criteria)</label><textarea data-t-f="outcome" rows="2">${esc(t.outcome)}</textarea><label>Why it matters</label><textarea data-t-f="why" rows="2">${esc(t.why)}</textarea><label>Example</label><textarea data-t-f="example" rows="2">${esc(t.example)}</textarea><label>Steps (one per line)</label><textarea data-t-l="steps" rows="4">${esc((t.steps||[]).join("\n"))}</textarea><label>Checklist (one per line)</label><textarea data-t-l="checklist" rows="3">${esc((t.checklist||[]).join("\n"))}</textarea><label>Status</label><select data-t-f="status">${["published","draft","archived"].map(v=>`<option ${t.status===v?"selected":""}>${v}</option>`).join("")}</select>
+<p class="eyebrow" style="margin-top:18px">Learn from the best — quotes</p>${rows(t.quotes,"quotes",[["text","Quote",1],["by","Who said it"],["role","Their role"],["lesson","How it applies to this task",1]])}<button class="o" data-add="quotes">+ Add quote</button>
+<p class="eyebrow" style="margin-top:18px">How the best did it</p>${rows(t.moves,"moves",[["by","Who"],["text","What they did",1]])}<button class="o" data-add="moves">+ Add item</button>
+<p class="eyebrow" style="margin-top:18px">About the sources (shown small at the bottom)</p>${rows(t.sources,"sources",[["title","Source name"],["detail","Details (author, year)"]])}<button class="o" data-add="sources">+ Add source</button>
+<div class="row" style="margin-top:18px"><button class="b" data-a="save">Save stage</button><button class="o" data-a="tup">↑ Up</button><button class="o" data-a="tdown">↓ Down</button><button class="o" data-a="tdup">Duplicate</button><button class="o d" data-a="tdel">Delete task</button></div></div>`}
+function admin(){if(!isAdmin)return `<div class="card">Administrator access is required. Admin rights are granted by the artifact owner (share this page with someone as an Editor).</div>`;
+if(adm.tab==="insp")return adminInsp();if(adm.tab==="tpl")return adminTpl();
+const list=all().filter(s=>(adm.f==="all"||s.status===adm.f)&&(s.title+" "+s.summary).toLowerCase().includes(adm.q.toLowerCase()));
+const cur=draft;let ed="";
+if(cur){const T=cur.tasks||[];const t=adm.tid?T.find(x=>x.id===adm.tid):null;
+ed=`<div class="card"><div class="row" style="justify-content:space-between"><h2>Stage ${cur.number}</h2><span class="pill">${cur.status}</span></div>
+<label>Title</label><input data-f="title" value="${esc(cur.title)}"><label>Summary</label><textarea data-f="summary" rows="2">${esc(cur.summary)}</textarea>
+<div class="row" style="margin-top:12px"><button class="b" data-a="save">Save stage</button><button class="o" data-a="pub">${cur.status==="published"?"Unpublish":"Publish"}</button><button class="o" data-a="dup">Duplicate</button><button class="o d" data-a="arch">Archive</button><button class="o d" data-a="sdel">Delete</button></div></div>
+<div class="card"><div class="row" style="justify-content:space-between"><h2>Tasks</h2><button class="o" data-a="addtask">+ Add task</button></div>
+${T.map((x,i)=>`<div class="sl ${adm.tid===x.id?"on":""}" data-t="${x.id}"><div class="row" style="justify-content:space-between"><span>${i+1}. ${esc(x.title)}</span><span class="pill">${x.status}</span></div></div>`).join("")||'<p class="muted">No tasks yet.</p>'}</div>`;
+if(t)ed+=taskEditor(t)}
+return `<p class="eyebrow">Admin</p><h1>Journey builder</h1>${ptab()}<div class="warn">Edits save to the shared database and go live for every user as soon as a stage is published.</div>
+<div class="adm" style="margin-top:14px"><div><div class="card"><input id="q" placeholder="Search stages…" value="${esc(adm.q)}"><select id="f" style="margin-top:8px">${["all","published","draft","archived"].map(v=>`<option ${adm.f===v?"selected":""}>${v}</option>`).join("")}</select><div style="margin-top:8px">${list.map(s=>`<div class="sl ${adm.sid===s.id?"on":""}" data-s="${s.id}"><div class="row" style="justify-content:space-between"><span>${s.number}. ${esc(s.title)}</span><span class="pill">${s.status}</span></div></div>`).join("")||'<p class="muted">No stages.</p>'}</div>
+<div class="row" style="margin-top:10px"><button class="o" data-a="up">↑ Up</button><button class="o" data-a="down">↓ Down</button><button class="o" data-a="add">+ Stage</button></div></div></div><div>${ed||'<div class="card muted">Select a stage to edit.</div>'}</div></div>`}
+function adminInsp(){const cur=idr;
+return `<p class="eyebrow">Admin</p><h1>Inspiration Room</h1>${ptab()}<div class="adm"><div class="card">${inspo.map(x=>`<div class="sl ${adm.iid===x.id?"on":""}" data-ii="${x.id}"><div class="row" style="justify-content:space-between"><span>${esc((x.title||"").slice(0,40))}</span><span class="pill">${esc(x.kind)}</span></div></div>`).join("")}<button class="o" data-a="iadd" style="margin-top:8px">+ Add item</button></div><div>${cur?`<div class="card"><label>Title</label><input data-ip="title" value="${esc(cur.title)}"><label>Body</label><textarea rows="3" data-ip="body">${esc(cur.body)}</textarea><label>Kind</label><select data-ip="kind">${Object.keys(KL).map(k=>`<option value="${k}" ${cur.kind===k?"selected":""}>${KL[k]}</option>`).join("")}</select><label>Topics (comma separated: ${Object.keys(TL).join(", ")})</label><input data-ip="topics" value="${esc((cur.topics||[]).join(", "))}"><label>Attribution</label><input data-ip="attribution" value="${esc(cur.attribution)}"><label>Source</label><input data-ip="source" value="${esc(cur.source)}"><label>“Try” action</label><textarea rows="2" data-ip="action">${esc(cur.action)}</textarea><label>Suggested task</label><select data-ip="suggestedTaskId"><option value="">None</option>${allTasks().map(t=>`<option value="${t.id}" ${cur.suggestedTaskId===t.id?"selected":""}>Stage ${t.sn}: ${esc(t.title)}</option>`).join("")}</select><div class="row" style="margin-top:12px"><button class="b" data-a="isave">Save</button><button class="o d" data-a="idel">Delete</button></div></div>`:'<div class="card muted">Select an item to edit.</div>'}</div></div>`}
+function adminTpl(){const cur=tdr;
+return `<p class="eyebrow">Admin</p><h1>Templates & Tools</h1>${ptab()}<div class="adm"><div class="card">${tpls.map(x=>`<div class="sl ${adm.tiid===x.id?"on":""}" data-ti="${x.id}"><div class="row" style="justify-content:space-between"><span>${esc(x.name)}</span><span class="pill">Stage ${x.stage}</span></div></div>`).join("")}<button class="o" data-a="tadd" style="margin-top:8px">+ Add template</button></div><div>${cur?`<div class="card"><label>Name</label><input data-tp="name" value="${esc(cur.name)}"><label>Description</label><textarea rows="2" data-tp="description">${esc(cur.description)}</textarea><label>How to use it</label><textarea rows="3" data-tp="instructions">${esc(cur.instructions)}</textarea><label>Stage number</label><input type="number" data-tp="stage" value="${esc(cur.stage)}"><label>Related task</label><select data-tp="taskId"><option value="">None</option>${allTasks().map(t=>`<option value="${t.id}" ${cur.taskId===t.id?"selected":""}>Stage ${t.sn}: ${esc(t.title)}</option>`).join("")}</select><label>Calculator</label><select data-tp="calculator">${["","breakeven","cashflow","metrics"].map(v=>`<option value="${v}" ${(cur.calculator||"")===v?"selected":""}>${v||"None"}</option>`).join("")}</select><label>Form fields (JSON list: key, label, type text/number/textarea, placeholder)</label><textarea rows="8" data-tp="_ft" style="font-family:ui-monospace,monospace;font-size:13px">${esc(cur._ft)}</textarea><div class="row" style="margin-top:12px"><button class="b" data-a="tsave">Save</button><button class="o d" data-a="tdel2">Delete</button></div></div>`:'<div class="card muted">Select a template to edit.</div>'}</div></div>`}
+let prof=undefined,pd={};const saveProf=()=>db&&db.collection("data/users/"+uid).doc("profile").set(prof).catch(()=>toast("Could not save"));
+let ans={};const saveAns=()=>db&&db.collection("data/users/"+uid).doc("answers").set({ans}).catch(()=>toast("Could not save your answer"));
+let inspo=[],tpls=[],tvals={},itopic="all",ikind="all",tplId=null,chat=[],cin="",ctask="",busy=false,sampleFn=null;
+const TL={uncertainty:"Uncertainty","fear-of-failure":"Fear of failure","slow-progress":"Slow progress",rejection:"Rejection",overwhelm:"Overwhelm",growth:"Growth",customers:"Customers"};
+const KL={quote:"Quote",story:"Founder story",lesson:"Practical lesson",encouragement:"Encouragement"};
+const num=v=>v===undefined||v===""?NaN:Number(v);
+const money=n=>Number.isFinite(n)?n.toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0}):"—";
+const idle=()=>!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||"");
+const allTasks=()=>live().flatMap(s=>s.tasks.map(t=>({...t,sid:s.id,sn:s.number,st:s.title})));
+const opts=(o,cur,all)=>`<option value="all">${all}</option>`+Object.entries(o).map(([k,v])=>`<option value="${k}" ${cur===k?"selected":""}>${v}</option>`).join("");
+function inspiration(){const L=inspo.filter(i=>(itopic==="all"||(i.topics||[]).includes(itopic))&&(ikind==="all"||i.kind===ikind));const T=allTasks();
+return `<p class="eyebrow">Inspiration Room</p><h1>Encouragement you can act on</h1><div class="row"><select id="it" style="width:auto">${opts(TL,itopic,"All topics")}</select><select id="ik" style="width:auto">${opts(KL,ikind,"All kinds")}</select></div><div class="grid" style="margin-top:12px">${L.map(i=>{const t=T.find(x=>x.id===i.suggestedTaskId);return `<div class="card" style="${i.kind==="quote"?"background:var(--pale)":""}"><span class="eyebrow">${KL[i.kind]||""}</span><h2>${esc(i.title)}</h2>${i.body&&i.body!==i.title?`<p>${esc(i.body)}</p>`:""}${i.attribution?`<p class="muted">— ${esc(i.attribution)}</p>`:""}${i.source?`<p class="muted" style="font-size:12px">${esc(i.source)}</p>`:""}<p style="border-top:1px solid var(--line);padding-top:8px"><b>Try:</b> ${esc(i.action)}</p>${t?`<button class="o" data-task="${t.sid}|${t.id}">Open task: ${esc(t.title)}</button>`:""}</div>`}).join("")||`<div class="card muted">${inspo.length?"Nothing matches these filters.":"Loading…"}</div>`}</div>`}
+function calc(t,v){if(!t.calculator)return"";const R=(k,x)=>`<div class="row" style="justify-content:space-between;border-bottom:1px solid #29384C;padding:6px 0"><span style="color:#B8C4D3">${k}</span><b>${x}</b></div>`;const box=h=>`<div class="card" style="background:#101A2A;color:#fff"><p class="eyebrow">Results</p>${h}</div>`;const ph=box('<span style="color:#B8C4D3">Enter your figures to see results.</span>');
+if(t.calculator==="breakeven"){const p=num(v.price),vc=num(v.variable),fx=num(v.fixed),tg=num(v.target)||0;if([p,vc,fx].some(isNaN))return ph;const m=p-vc;if(m<=0)return box("Your price doesn’t cover the variable cost per unit, so you can’t break even at this price.");const u=Math.ceil(fx/m);return box(R("Contribution per unit",money(m))+R("Margin",(m/p*100).toFixed(1)+"%")+R("Break-even units / month",u)+R("Break-even revenue / month",money(u*p))+(v.target?R("Units for target profit",Math.ceil((fx+tg)/m)):""))}
+if(t.calculator==="cashflow"){const s=num(v.starting),i=num(v.inflow),o=num(v.outflow),one=num(v.oneoff)||0;if([s,i,o].some(isNaN))return ph;let b=s,rows="",neg=0;for(let m=1;m<=6;m++){b+=i-o-(m===1?one:0);if(b<0&&!neg)neg=m;rows+=R("Month "+m,money(b))}return box(rows+`<p>${neg?"Cash goes negative in month "+neg+".":"Cash stays positive across six months."}</p>`)}
+const l=num(v.leads),c=num(v.customers),r=num(v.revenue),h=num(v.hours);return box(R("Lead → customer conversion",l>0&&!isNaN(c)?(c/l*100).toFixed(1)+"%":"—")+R("Revenue per customer",c>0&&!isNaN(r)?money(r/c):"—")+R("Revenue per hour",h>0&&!isNaN(r)?money(r/h):"—"))}
+function tools(){const t=tplId&&tpls.find(x=>x.id===tplId);if(!t)return `<p class="eyebrow">Templates & Tools</p><h1>Worksheets and calculators</h1><div class="grid">${[...tpls].sort((a,b)=>a.stage-b.stage).map(x=>`<div class="card item" data-tpl="${x.id}"><p class="eyebrow">Stage ${x.stage}${x.calculator?" · Calculator":""}</p><h2>${esc(x.name)}</h2><p class="muted">${esc(x.description)}</p></div>`).join("")||'<div class="card muted">Loading…</div>'}</div>`;
+const v=tvals[t.id]||{},tk=allTasks().find(x=>x.id===t.taskId);
+return `<button class="o" data-go="tools">← All tools</button><p class="eyebrow" style="margin-top:14px">Stage ${t.stage}</p><h1>${esc(t.name)}</h1><p class="muted">${esc(t.description)}</p><div class="two"><div class="card">${t.fields.map(f=>`<label>${esc(f.label)}</label>${f.type==="textarea"?`<textarea rows="3" data-tv="${f.key}" placeholder="${esc(f.placeholder||"")}">${esc(v[f.key]||"")}</textarea>`:`<input ${f.type==="number"?'type="number" step="any"':""} data-tv="${f.key}" value="${esc(v[f.key]||"")}" placeholder="${esc(f.placeholder||"")}">`}`).join("")}<div class="row" style="margin-top:12px"><button class="o" data-copy="1">Copy</button><button class="o" data-clear="1">Clear</button></div><p class="muted" style="font-size:12px">Saved automatically to your account.</p></div><div><div id="calc">${calc(t,v)}</div><div class="card"><b>How to use it</b><p class="muted">${esc(t.instructions)}</p></div>${tk?`<div class="card"><b>Related task</b><p><button class="o" data-task="${tk.sid}|${tk.id}">${esc(tk.title)} →</button></p></div>`:""}<p class="muted" style="font-size:12px">Educational tool only — not legal, tax or investment advice.</p></div></div>`}
+const SO=["Just an idea","Researching the problem","Talking to potential customers","Building an offer or prototype","Have a few customers","Making steady revenue"],HO=["Under 5 hours a week","5–10 hours a week","10–20 hours a week","20–40 hours a week","Full time"],MO=["$0","Under $500","$500–$2,000","$2,000–$10,000","$10,000 or more"],TM=["Solo","With a co-founder","Small team"],GO=["Validate my idea","Get my first customer","Earn my first $1,000","Replace my income","Grow what I have"];
+const psel=(k,a)=>`<select data-pf="${k}"><option value="">Choose…</option>${a.map(v=>`<option ${pd[k]===v?"selected":""}>${esc(v)}</option>`).join("")}</select>`;
+const profTxt=()=>prof?`\nFounder profile: name ${prof.name}; company ${prof.company||"not named yet"}; building: ${prof.idea||"n/a"}; stage: ${prof.stage||"n/a"}; time available: ${prof.hours||"n/a"}; money to invest: ${prof.money||"n/a"}; team: ${prof.team||"n/a"}; 90-day goal: ${prof.goal||"n/a"}; hardest part: ${prof.hard||"n/a"}. Tailor advice to their time and budget.`:"";
+function welcome(){return `<p class="eyebrow">${prof?"Your profile":"Welcome"}</p><h1>${prof?"Update your details":"Let’s set up your founder journey"}</h1><p class="muted">A few quick questions so your coach and next steps fit your real situation. You can change these any time.</p><div class="card"><label>Your name</label><input data-pf="name" value="${esc(pd.name)}"><label>Future company name (a working title is fine)</label><input data-pf="company" value="${esc(pd.company)}"><label>What are you building, and for whom?</label><textarea data-pf="idea" rows="2">${esc(pd.idea)}</textarea><label>Where are you in building it?</label>${psel("stage",SO)}<label>How much time can you dedicate?</label>${psel("hours",HO)}<label>How much money can you put in right now?</label>${psel("money",MO)}<label>Who’s building it?</label>${psel("team",TM)}<label>Your main goal for the next 90 days</label>${psel("goal",GO)}<label>What feels hardest right now? (optional)</label><textarea data-pf="hard" rows="2">${esc(pd.hard)}</textarea><div class="row" style="margin-top:14px"><button class="b" data-saveprof="1">Save and continue</button>${prof?'<button class="o" data-go="home">Cancel</button>':""}</div><p class="muted" style="font-size:12px">Saved to your account only.</p></div>`}
+const chatHtml=()=>chat.map(m=>`<div class="card" style="white-space:pre-wrap;${m.r==="user"?"background:var(--pale)":""}"><b>${m.r==="user"?"You":"Coach"}</b><br>${esc(m.t)||"…"}</div>`).join("")||'<div class="card muted">Describe what you’re working on, paste a draft, or ask what to do next.</div>';
+function coach(){return `<p class="eyebrow">AI Founder Coach</p><h1>Talk through where you’re stuck</h1><div class="card"><label style="margin-top:0">Task you’re working on (optional)</label><select id="ct"><option value="">General question</option>${allTasks().map(t=>`<option value="${t.id}" ${ctask===t.id?"selected":""}>Stage ${t.sn}: ${esc(t.title)}</option>`).join("")}</select></div><div id="chat">${chatHtml()}</div><div class="card"><textarea id="cin" rows="3" placeholder="What are you working on?">${esc(cin)}</textarea><div class="row" style="margin-top:8px"><button class="b" data-send="1" ${busy?"disabled":""}>${busy?"Thinking…":"Ask coach"}</button><button class="o" data-reset="1">New conversation</button></div><p class="muted" style="font-size:12px">AI guidance for learning — not legal, tax or investment advice.</p></div>`}
+async function coachSend(){const txt=($("#cin")?.value||cin).trim();if(!txt||busy)return;
+if(!sampleFn)sampleFn=await claude.use("sample");if(!sampleFn){toast("The AI coach isn’t available here");return}
+const t=allTasks().find(x=>x.id===ctask),p=prog(),hist=chat.map(m=>(m.r==="user"?"Founder: ":"Coach: ")+m.t).join("\n\n");
+const prompt=`You are the AI Founder Coach inside The Founder, an app that guides people from an idea to an operating business.\nPrinciples: separate activity from validation; weigh evidence of real commitment (payments, pre-orders, signed agreements) above opinions or compliments; name hidden assumptions; ask at most one clarifying question; give 2 to 3 specific next actions, each with a short reason; never promise results; you are not a lawyer, accountant or financial advisor, so point to a professional for legal, tax or investment decisions. Be warm, direct and brief (under 250 words). Plain text only, no markdown headers.\nProgress: ${p.n} of ${p.total} journey tasks complete.${profTxt()}${t?`\nCurrent task: "${t.title}" (Stage ${t.sn}: ${t.st}). Expected outcome: ${t.outcome}`:""}\n\nConversation so far:\n${hist||"(none)"}\n\nFounder: ${txt}\n\nCoach:`;
+chat.push({r:"user",t:txt},{r:"coach",t:""});cin="";busy=true;render();
+try{const r=await sampleFn(prompt,{cache:false,onText:({text})=>{chat.at(-1).t=text;const c=$("#chat");if(c)c.innerHTML=chatHtml()}});chat.at(-1).t=r.text}catch(e){chat.pop();chat.push({r:"coach",t:"Sorry, I couldn’t answer that just now ("+(e.code||"error")+"). Please try again."})}
+busy=false;render()}
+const saveTv=()=>db&&db.collection("data/users/"+uid).doc("templates").set({vals:tvals}).catch(()=>toast("Could not save"));
+function render(){nav();$("#app").innerHTML=({home,journey,stage:stageV,admin,coach,inspiration,tools,welcome,profile:welcome})[view.n]();}
+function pick(id){adm.sid=id;adm.tid=null;const s=stages.find(x=>x.id===id);draft=s?JSON.parse(JSON.stringify(s)):null}
+const uidn=p=>p+"-"+Date.now().toString(36);
+async function swap(a,b){if(!a||!b)return;const n=a.number;a.number=b.number;b.number=n;await saveStage(a,"Reordered");await saveStage(b,"Reordered")}
+document.addEventListener("click",async e=>{const el=e.target.closest("[data-go],[data-stage],[data-task],[data-done],[data-s],[data-t],[data-a],[data-send],[data-reset],[data-tpl],[data-clear],[data-copy],[data-saveprof],[data-tab],[data-ii],[data-ti],[data-add],[data-rm]");if(!el)return;const d=el.dataset;
+if(d.go){tplId=null;view={n:d.go};if(d.go==="profile")pd={...(prof||{})};if(d.go==="admin"&&!draft&&adm.sid)pick(adm.sid)}
+else if(d.stage)view={n:"stage",sid:d.stage};
+else if(d.task){const[s,t]=d.task.split("|");view={n:"stage",sid:s,tid:t}}
+else if(d.done){done[d.done]=!done[d.done];await saveDone()}
+else if(d.s)pick(d.s);
+else if(d.t)adm.tid=d.t;
+else if(d.tab){adm.tab=d.tab;idr=null;tdr=null}
+else if(d.ii){adm.iid=d.ii;const x=inspo.find(y=>y.id===d.ii);idr=x?JSON.parse(JSON.stringify(x)):null}
+else if(d.ti){adm.tiid=d.ti;const x=tpls.find(y=>y.id===d.ti);tdr=x?JSON.parse(JSON.stringify(x)):null;if(tdr)tdr._ft=JSON.stringify(tdr.fields||[],null,1)}
+else if(d.add){const task=(draft?.tasks||[]).find(x=>x.id===adm.tid);if(task)task[d.add]=[...(task[d.add]||[]),d.add==="quotes"?{text:"",by:"",role:"",lesson:""}:d.add==="moves"?{by:"",text:""}:{title:"",detail:""}]}
+else if(d.rm){const[k,i]=d.rm.split("|");const task=(draft?.tasks||[]).find(x=>x.id===adm.tid);if(task)task[k].splice(+i,1)}
+else if(d.saveprof){if(!(pd.name||"").trim()){toast("Please add your name");return}prof={...pd};await saveProf();view={n:"home"};toast("Saved")}
+else if(d.send){await coachSend();return}
+else if(d.reset){chat=[];cin=""}
+else if(d.tpl)tplId=d.tpl;
+else if(d.clear){delete tvals[tplId];saveTv()}
+else if(d.copy){const t=tpls.find(x=>x.id===tplId),v=tvals[tplId]||{};navigator.clipboard.writeText(t.name+"\n\n"+t.fields.map(f=>f.label+": "+(v[f.key]||"")).join("\n")).then(()=>toast("Copied"),()=>toast("Copy was blocked by the browser"));return}
+else if(d.a){const a=d.a,L=all(),i=L.findIndex(x=>x.id===adm.sid),T=draft?.tasks||[],ti=T.findIndex(x=>x.id===adm.tid);
+if(a==="add"){const s={id:uidn("stage"),number:(L.at(-1)?.number||0)+1,title:"New stage",summary:"",status:"draft",tasks:[]};await saveStage(s,"Stage created");pick(s.id)}
+else if(a==="iadd"){const x={id:uidn("insp"),kind:"encouragement",title:"New item",body:"",topics:[],attribution:"",source:"",action:"",suggestedTaskId:""};inspo=[...inspo,x];try{await db.doc("content/inspiration").set({items:inspo})}catch(e){toast("Not allowed: "+(e.message||e.code))}adm.iid=x.id;idr=JSON.parse(JSON.stringify(x))}
+else if(a==="isave"&&idr){inspo=inspo.map(x=>x.id===idr.id?idr:x);try{await db.doc("content/inspiration").set({items:inspo});toast("Saved")}catch(e){toast("Not allowed: "+(e.message||e.code))}}
+else if(a==="idel"&&idr){if(confirm("Delete this item?")){inspo=inspo.filter(x=>x.id!==idr.id);try{await db.doc("content/inspiration").set({items:inspo});toast("Deleted")}catch(e){toast("Not allowed")}idr=null}}
+else if(a==="tadd"){const x={id:uidn("tpl"),name:"New template",stage:1,taskId:"",description:"",instructions:"",fields:[{key:"notes",label:"Notes",type:"textarea"}]};tpls=[...tpls,x];try{await db.doc("content/templates").set({items:tpls})}catch(e){toast("Not allowed")}adm.tiid=x.id;tdr=JSON.parse(JSON.stringify(x));tdr._ft=JSON.stringify(x.fields,null,1)}
+else if(a==="tsave"&&tdr){let f;try{f=JSON.parse(tdr._ft);if(!Array.isArray(f))throw 0}catch{toast("Form fields must be a valid JSON list");return}const x={...tdr,fields:f};delete x._ft;if(!x.calculator)delete x.calculator;tpls=tpls.map(y=>y.id===x.id?x:y);try{await db.doc("content/templates").set({items:tpls});toast("Saved")}catch(e){toast("Not allowed: "+(e.message||e.code))}}
+else if(a==="tdel2"&&tdr){if(confirm("Delete this template?")){tpls=tpls.filter(x=>x.id!==tdr.id);try{await db.doc("content/templates").set({items:tpls});toast("Deleted")}catch(e){toast("Not allowed")}tdr=null}}
+else if(!draft&&a!=="up"&&a!=="down"){return}
+else if(a==="save")await saveStage(draft);
+else if(a==="pub"){draft.status=draft.status==="published"?"draft":"published";await saveStage(draft,draft.status==="published"?"Published":"Unpublished")}
+else if(a==="sdel"){if(confirm("Delete this stage and all its tasks? Archiving is safer.")){try{await db.doc("stages/"+draft.id).delete();toast("Deleted")}catch(e){toast("Not allowed")}draft=null;adm.sid=null;adm.tid=null}}
+else if(a==="tdel"&&ti>=0){if(confirm("Delete this task?")){T.splice(ti,1);adm.tid=null;await saveStage(draft,"Task deleted")}}
+else if(a==="arch"){if(confirm("Archive this stage? It will be hidden from learners; progress is kept.")){draft.status="archived";await saveStage(draft,"Archived")}}
+else if(a==="dup"){const c=JSON.parse(JSON.stringify(draft));c.id=uidn("stage");c.title+=" (copy)";c.status="draft";c.number=(L.at(-1)?.number||0)+1;c.tasks=c.tasks.map(t=>({...t,id:uidn("task")+Math.random().toString(36).slice(2,5)}));await saveStage(c,"Duplicated");pick(c.id)}
+else if(a==="up")await swap(L[i],L[i-1]);else if(a==="down")await swap(L[i],L[i+1]);
+else if(a==="addtask"){const t={id:uidn("task"),title:"New task",outcome:"",why:"",steps:[],example:"",checklist:[],templates:[],status:"draft"};draft.tasks=[...T,t];adm.tid=t.id;await saveStage(draft,"Task added")}
+else if(a==="tdup"&&ti>=0){const c={...JSON.parse(JSON.stringify(T[ti])),id:uidn("task"),status:"draft"};c.title+=" (copy)";T.splice(ti+1,0,c);await saveStage(draft,"Task duplicated")}
+else if((a==="tup"&&ti>0)||(a==="tdown"&&ti>=0&&ti<T.length-1)){const j=a==="tup"?ti-1:ti+1;[T[ti],T[j]]=[T[j],T[ti]];await saveStage(draft,"Task reordered")}}
+render()});
+document.addEventListener("input",e=>{const t=e.target;
+if(t.id==="q"){adm.q=t.value;const p=t.selectionStart;render();const q=$("#q");q.focus();q.setSelectionRange(p,p);return}
+if(t.id==="f"){adm.f=t.value;render();return}
+if(t.dataset.pf){pd[t.dataset.pf]=t.value;return}
+if(t.dataset.ans){ans[t.dataset.ans]=t.value;clearTimeout(saveAns.t);saveAns.t=setTimeout(saveAns,800);return}
+if(t.id==="cin"){cin=t.value;return}
+if(t.id==="ct"){ctask=t.value;return}
+if(t.id==="it"){itopic=t.value;render();return}
+if(t.id==="ik"){ikind=t.value;render();return}
+if(t.dataset.tv){(tvals[tplId]??={})[t.dataset.tv]=t.value;const tp=tpls.find(x=>x.id===tplId);$("#calc").innerHTML=calc(tp,tvals[tplId]);clearTimeout(saveTv.t);saveTv.t=setTimeout(saveTv,800);return}
+if(t.dataset.ip&&idr){const k=t.dataset.ip;idr[k]=k==="topics"?t.value.split(",").map(x=>x.trim()).filter(Boolean):t.value;return}
+if(t.dataset.tp&&tdr){tdr[t.dataset.tp]=t.dataset.tp==="stage"?(Number(t.value)||1):t.value;return}
+if(t.dataset.arr&&draft){const task=(draft.tasks||[]).find(x=>x.id===adm.tid);if(task&&task[t.dataset.arr]&&task[t.dataset.arr][+t.dataset.i])task[t.dataset.arr][+t.dataset.i][t.dataset.k]=t.value;return}
+if(!draft)return;
+if(t.dataset.f)draft[t.dataset.f]=t.value;
+const task=(draft.tasks||[]).find(x=>x.id===adm.tid);
+if(task&&t.dataset.tF){task[t.dataset.tF]=t.value;if(t.dataset.tF==="title"||t.dataset.tF==="status"){}}
+if(task&&t.dataset.tL)task[t.dataset.tL]=t.value.split("\n").map(x=>x.trim()).filter(Boolean)});
+document.addEventListener("change",e=>{const t=e.target;if(t.dataset.ck){const[id,i]=t.dataset.ck.split("|");const c={...(done["ck:"+id]||{})};c[i]=t.checked;done["ck:"+id]=c;saveDone()}if(t.dataset.tF==="status")render()});
+(async()=>{
+  const user=await claude.use("user");db=await claude.use("db");
+  if(user){isAdmin=await user.canEdit();uid=await user.id()}
+  if(!db){$("#app").innerHTML='<div class="card">Sign in to claude.ai to use The Founder.</div>';return}
+  db.collection("stages").onSnapshot(s=>{stages=s.docs.map(d=>({id:d.id,...d.data()}));loaded=true;if(adm.sid&&!draft)pick(adm.sid);if(!document.activeElement||!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))render()});
+  db.collection("data/users/"+uid).doc("progress").onSnapshot(s=>{done=s.exists?(s.data().done||{}):{};if(!document.activeElement||!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))render()});
+  db.collection("data/users/"+uid).doc("profile").onSnapshot(s=>{prof=s.exists?s.data():null;if(!prof&&view.n==="home"){pd={};view={n:"welcome"}}if(idle())render()});
+  db.collection("data/users/"+uid).doc("answers").onSnapshot(s=>{if(idle()){ans=s.exists?(s.data().ans||{}):{};render()}});
+  db.doc("content/inspiration").onSnapshot(s=>{inspo=s.exists?(s.data().items||[]):[];if(idle())render()});
+  db.doc("content/templates").onSnapshot(s=>{tpls=s.exists?(s.data().items||[]):[];if(idle())render()});
+  db.collection("data/users/"+uid).doc("templates").onSnapshot(s=>{if(idle()){tvals=s.exists?(s.data().vals||{}):{};render()}});
+  render();
+})();
+</script></body></html>
